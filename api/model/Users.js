@@ -4,7 +4,7 @@ const {createToken} = require('../middleware/AuthenticateUser')
 class Users{
     fetchUsers(req,res){
         const query = `
-        SELECT userID, firstName,lastName,gender,userDOB,emailAdd,profileUrl,
+        SELECT userID, firstName,lastName,gender,userDOB,emailAdd,profileUrl
         FROM Users;`
         db.query(query,(err,results)=>{
             if(err) throw err
@@ -29,9 +29,56 @@ class Users{
                 })
             })
     }
-    login(req,res){
+    async login(req, res) {
+        const {emailAdd, userPass} = await req.body
+        // query
         const query = `
-        SELECT `
+        SELECT firstName, lastName,
+        gender, userDOB, emailAdd, userPass,
+        profileUrl
+        FROM Users
+        WHERE emailAdd = ?;
+        `
+        db.query(query, [emailAdd], (err, result)=>{
+            if(err) throw err
+            if(!result?.length){
+                res.json({
+                    status: res.statusCode,
+                    msg: "You provided a wrong email."
+                })
+            }else {
+                compare(userPass,
+                    result[0].userPass,
+                    (Err, Result)=>{
+                        if(Err) throw Err
+                        // Create a token
+                        const token =
+                        createToken({
+                            emailAdd,
+                            userPass
+                        })
+                        // Save a token
+                        res.cookie("LegitUser",
+                        token, {
+                            maxAge: 3600000,
+                            httpOnly: true
+                        })
+                        if(Result) {
+                            res.json({
+                                msg: "Logged in",
+                                token,
+                                result: result[0]
+                            })
+                        }else {
+                            res.json({
+                                status: res.statusCode,
+                                msg:
+                                "Invalid password or you have not registered"
+                            })
+                        }
+                    })
+            }
+        })
     }
     async register(req,res){
         const data = req.body
@@ -63,6 +110,12 @@ class Users{
         })
     }
     updateUser(req,res){
+
+    const data = req.body
+    if (data.userPass) {
+        data.userPass =
+        hashSync(data.userPass, 15)
+    }
         const query = `
         UPDATE Users
         SET ?
